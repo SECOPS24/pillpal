@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PillPal</title>
+<style>
+:root{--bg:#f6f8fb;--card:#fff;--ink:#1d2433;--mute:#6b7488;--accent:#2f7de1;--ok:#1f9d63;--warn:#d9822b}
+@media(prefers-color-scheme:dark){:root{--bg:#141821;--card:#1e2430;--ink:#e8ecf4;--mute:#97a1b5}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+main{max-width:560px;margin:0 auto;padding:20px 16px 60px}
+h1{margin:0 0 4px}p.sub{color:var(--mute);margin:0 0 20px}
+.card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+form input{padding:10px;border:1px solid var(--mute);border-radius:8px;background:transparent;color:var(--ink);font-size:15px}
+form input.wide,form button{grid-column:1/-1}
+button{padding:10px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-size:15px;cursor:pointer}
+button.ghost{background:transparent;color:var(--mute);border:1px solid var(--mute)}
+.dose{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid rgba(128,128,128,.2)}
+.dose:first-child{border-top:0}.time{font-weight:700;width:64px}.info{flex:1}.info small{color:var(--mute)}
+.taken .info strong{text-decoration:line-through;color:var(--mute)}
+.badge{font-size:12px;padding:2px 8px;border-radius:99px;color:#fff}
+.b-ok{background:var(--ok)}.b-due{background:var(--warn)}.b-up{background:var(--mute)}
+#banner{display:none;background:var(--warn);color:#fff;padding:12px;border-radius:10px;margin-bottom:16px}
+.empty{color:var(--mute);text-align:center;padding:12px}
+</style></head><body><main>
+<h1>💊 PillPal</h1><p class="sub" id="today"></p>
+<div id="banner"></div>
+<section class="card"><h2 style="margin-top:0">Today's doses</h2><div id="list"></div></section>
+<section class="card"><h2 style="margin-top:0">Add a medicine</h2>
+<form id="f">
+<input class="wide" id="name" placeholder="Medicine name (e.g. Vitamin D)" required>
+<input id="dose" placeholder="Dosage (e.g. 1 tablet)" required>
+<input id="time" type="time" required>
+<button type="submit">Add reminder</button>
+</form></section>
+<button class="ghost" id="notif">Enable browser notifications</button>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const KEY='pillpal.v1';
+const todayKey=()=>new Date().toISOString().slice(0,10);
+function load(){try{return JSON.parse(localStorage.getItem(KEY))||{meds:[],taken:{}}}catch(e){return{meds:[],taken:{}}}}
+function save(s){try{localStorage.setItem(KEY,JSON.stringify(s))}catch(e){}}
+let state=load();const notified=new Set();
+document.getElementById('today').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});
+function status(m){const t=!!state.taken[todayKey()+'|'+m.id];if(t)return'taken';
+const now=new Date();const[h,mi]=m.time.split(':').map(Number);const due=new Date();due.setHours(h,mi,0,0);return now>=due?'due':'upcoming'}
+function render(){
+const el=document.getElementById('list');el.innerHTML='';
+const meds=[...state.meds].sort((a,b)=>a.time.localeCompare(b.time));
+if(!meds.length){el.innerHTML='<div class="empty">No medicines yet. Add one below.</div>';return}
+meds.forEach(m=>{const s=status(m);const d=document.createElement('div');d.className='dose'+(s==='taken'?' taken':'');
+const label=s==='taken'?['Taken','b-ok']:s==='due'?['Due now','b-due']:['Upcoming','b-up'];
+d.innerHTML=`<div class="time">${m.time}</div><div class="info"><strong></strong><br><small></small></div><span class="badge ${label[1]}">${label[0]}</span><button class="ghost"></button>`;
+d.querySelector('strong').textContent=m.name;d.querySelector('small').textContent=m.dose;
+const b=d.querySelector('button');b.textContent=s==='taken'?'Undo':'Mark taken';
+b.onclick=()=>{const k=todayKey()+'|'+m.id;if(state.taken[k])delete state.taken[k];else state.taken[k]=1;save(state);render()};
+const rm=document.createElement('button');rm.className='ghost';rm.textContent='✕';rm.title='Remove';
+rm.onclick=()=>{state.meds=state.meds.filter(x=>x.id!==m.id);save(state);render()};d.appendChild(rm);el.appendChild(d)})}
+document.getElementById('f').onsubmit=e=>{e.preventDefault();
+state.meds.push({id:Date.now().toString(36),name:$('name').value.trim(),dose:$('dose').value.trim(),time:$('time').value});
+save(state);e.target.reset();render()};
+function tick(){const banner=document.getElementById('banner');const due=state.meds.filter(m=>status(m)==='due');
+if(due.length){banner.style.display='block';banner.textContent='Time to take: '+due.map(m=>m.name+' ('+m.dose+')').join(', ')}else banner.style.display='none';
+due.forEach(m=>{const k=todayKey()+m.id;if(!notified.has(k)){notified.add(k);
+if('Notification' in window&&Notification.permission==='granted')new Notification('PillPal: time for '+m.name,{body:m.dose})}});render()}
+document.getElementById('notif').onclick=()=>{if('Notification' in window)Notification.requestPermission()};
+tick();setInterval(tick,30000);
+</script></body></html>
